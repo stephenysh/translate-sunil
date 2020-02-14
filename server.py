@@ -33,9 +33,9 @@ class DefaultOpt:
         self.alpha = 0.0
         self.attn_debug = False
         self.avg_raw_probs = False
-        self.batch_size = 30
+        self.batch_size = None #############
         self.batch_type = 'sents'
-        self.beam_size = 5
+        self.beam_size = 3 ###### 3
         self.beta = -0.0
         self.block_ngram_repeat = 0
 
@@ -57,7 +57,7 @@ class DefaultOpt:
         self.models = models
         self.n_best = 1
         #self.output ='./ b.txt' #needs to be changed
-        self.output =output
+        self.output =output #####
         self.phrase_table =''
         self.random_sampling_temp = 1.0
         self.random_sampling_topk = 1
@@ -71,11 +71,11 @@ class DefaultOpt:
         self.shard_size = 10000
         self.share_vocab = False
         #self.src ='./ a.txt' #needs to be changed
-        self.src = src
-        self.src_dir = ''
+        self.src = src ##########
+        self.src_dir = '' ###########
         self.stepwise_penalty = False
 
-        self.verbose = True
+        self.verbose = True ################
         self.window = 'hamming'
         self.window_size = 0.02
         self.window_stride = 0.01

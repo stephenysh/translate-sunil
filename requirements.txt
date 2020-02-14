@@ -1,0 +1,4 @@
+OpenNMT-py
+Flask
+waitress
+bpemb
