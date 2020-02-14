@@ -3,7 +3,7 @@
     "models": [
         {
             "id": "en",
-            "model": "trans__step_200000.pt",
+            "model": "en_trans__step_200000.pt",
             "timeout": -1,
             "on_timeout": "to_cpu",
             "load": true,
@@ -22,7 +22,7 @@
                 "dump_beam": "",
                 "dynamic_dict": false,
                 "fp32": false,
-                "gpu": -1,
+                "gpu": 0,
                 "ignore_when_blocking": [],
                 "image_channel_size": 3,
                 "length_penalty": "none",

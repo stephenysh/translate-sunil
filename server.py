@@ -44,7 +44,7 @@ class DefaultOpt:
         self.dump_beam =''
         self.dynamic_dict = False
         self.fp32 = False
-        self.gpu = -1
+        self.gpu = 0
         self.ignore_when_blocking = []
         self.image_channel_size = 3
         self.length_penalty = 'none'
@@ -374,7 +374,7 @@ class ServerModel(object):
         timer.start()
 
         try:
-            opt = DefaultOpt(['available_models/trans__step_200000.pt'], 'src-test.txt', 'temp.txt')
+            opt = DefaultOpt(self.user_opt['models'], 'src-test.txt', 'temp.txt') # should read model paths from json, not fixed
             self.translator = build_translator(opt,
                                                report_score=False,
                                                out_file=codecs.open(
