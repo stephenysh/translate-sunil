@@ -349,8 +349,9 @@ class ServerModel(object):
             if k == 'models':
                 sys.argv += ['-model']
                 sys.argv += [str(model) for model in v]
-            elif type(v) == bool:
-                sys.argv += ['-%s' % k]
+            elif type(v) == bool: # only true bool should be parsed
+                if v is True:
+                    sys.argv += ['-%s' % k]
             else:
                 sys.argv += ['-%s' % k, str(v)]
 
@@ -374,7 +375,8 @@ class ServerModel(object):
         timer.start()
 
         try:
-            opt = DefaultOpt(self.user_opt['models'], 'src-test.txt', 'temp.txt') # should read model paths from json, not fixed
+            # opt = DefaultOpt(self.user_opt['models'], 'src-test.txt', 'temp.txt') # should read model paths from json, not fixed
+            opt = self.opt
             self.translator = build_translator(opt,
                                                report_score=False,
                                                out_file=codecs.open(
