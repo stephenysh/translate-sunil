@@ -266,6 +266,15 @@ class ServerModel(object):
         model_root (str): Path to the model directory
             it must contain the model and tokenizer file
     """
+    abbrev = re.compile(r"(\b([a-z]\.){2,})")
+
+    eastern_to_western = {"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8",
+                          "٩": "9"}
+
+    en_digits = re.compile(r'[0-9]+')
+    ar_digits = re.compile(r'\b(?:%s)+\b' % '|'.join(list(eastern_to_western.keys())))
+    zeros = re.compile(r'0+')
+
     def encode_en2ar(self, message):
         return ' '.join(self.encoders['ar'].encode(message))
 
@@ -277,6 +286,47 @@ class ServerModel(object):
 
     def decode_ar2en(self, message):
         return ''.join(self.decoders['en'].decode(message.split()))
+
+    def first_letter_capitalize(self, message):
+        message = message.strip()
+        if len(message) == 0:
+            return message
+        return message[0].upper() + message[1:]
+
+    def digit_mapping(self, tgt_line, src_line):
+        src_digits = []
+        for m in re.finditer(self.en_digits, src_line):
+            src_digits.append((m.group(0), m.start(), m.end(), 'en'))
+        for m in re.finditer(self.ar_digits, src_line):
+            src_digits.append((m.group(0), m.start(), m.end(), 'ar'))
+
+        # sort by start position
+        src_digits = sorted(src_digits, key=lambda z: z[1])
+        for (i, src) in enumerate(src_digits):
+            if src[3] == 'ar':
+                en_number = ''.join(self.eastern_to_western[k] for k in src[0])
+                src_digits[i] = (en_number, src[1], src[2], src[3])
+
+        tgt_zeros = []
+        for m in re.finditer(self.zeros, tgt_line):
+            tgt_zeros.append((m.group(0), m.start(), m.end()))
+
+        if len(src_digits) != len(tgt_zeros):
+            print('cannot replace, mismatch in digit occurrences')
+            return tgt_line
+
+        for src, tgt in zip(src_digits, tgt_zeros):
+            tgt_line = tgt_line.replace(tgt[0], src[0], 1)
+        if len(src_digits) > 0:
+            print('correctly replaced')
+        return tgt_line
+
+    def to_upper(self, m):
+        word = m.group(0)
+        return word.upper()
+
+    def abbreviation_capitalize(self, line):
+        return re.sub(self.abbrev, self.to_upper, line)
 
     def __init__(self, opt, model_id, preprocess_opt=None, tokenizer_opt=None,
                  postprocess_opt=None, load=False, timeout=-1,
@@ -318,7 +368,12 @@ class ServerModel(object):
 
         self.logger.info("Loading preprocessors and post processors")
         self.preprocessor = [self.encode_fn[model_id]]
-        self.postprocessor = [self.decode_fn[model_id]]
+        self.postprocessor = [
+            {'func': self.decode_fn[model_id], 'need_source': False},
+            {'func': self.digit_mapping, 'need_source': True},
+            {'func': self.first_letter_capitalize, 'need_source': False},
+            {'func': self.abbreviation_capitalize, 'need_source': False}
+        ]
 
         if load:
             self.load()
@@ -424,6 +479,7 @@ class ServerModel(object):
                 timer.tick(name="to_gpu")
 
         texts = []
+        source_text = []
         head_spaces = []
         tail_spaces = []
         sslength = []
@@ -443,6 +499,7 @@ class ServerModel(object):
                     whitespaces_after = match_after.group(0)
                 head_spaces.append(whitespaces_before)
                 preprocessed_src = self.maybe_preprocess(src.strip())
+                source_text.append(src.strip())
                 tok = self.maybe_tokenize(preprocessed_src)
                 texts.append(tok)
                 sslength.append(len(tok.split()))
@@ -450,6 +507,7 @@ class ServerModel(object):
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
         texts_to_translate = [x for x in texts if x != ""]
+        source_lines = [x for x in source_text if x != ""]
 
         scores = []
         predictions = []
@@ -488,7 +546,7 @@ class ServerModel(object):
         #           for result, src in zip(results, tiled_texts)]
 
         #aligns = [align for _, align in results]
-        results = [self.maybe_postprocess(seq) for seq in results]
+        results = [self.maybe_postprocess(target, source) for target, source in zip(results, source_lines)]
 
         # build back results with empty texts
         for i in empty_indices:
@@ -695,14 +753,14 @@ class ServerModel(object):
             return to_word_align(src, tgt, align, mode=self.tokenizer_marker)
         return align
 
-    def maybe_postprocess(self, sequence):
+    def maybe_postprocess(self, target, source):
         """Postprocess the sequence (or not)
 
         """
-        return self.postprocess(sequence)
+        return self.postprocess(target, source)
 
 
-    def postprocess(self, sequence):
+    def postprocess(self, target, source):
         """Preprocess a single sequence.
 
         Args:
@@ -713,9 +771,12 @@ class ServerModel(object):
         """
         if self.postprocessor is None:
             raise ValueError("No postprocessor loaded")
-        for function in self.postprocessor:
-            sequence = function(sequence)
-        return sequence
+        for processor in self.postprocessor:
+            if processor['need_source']:
+                target = processor['func'](target, source)
+            else:
+                target = processor['func'](target)
+        return target
 
 
 
