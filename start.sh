@@ -5,4 +5,4 @@ export CONFIG="./conf.json"
 
 # NOTE that these parameters are optionnal
 # here, we explicitely set to default values
-python server.py --ip $IP --port $PORT --url_root $URL_ROOT --config $CONFIG
+python translation_server.py --ip $IP --port $PORT --url_root $URL_ROOT --config $CONFIG
