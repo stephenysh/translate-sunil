@@ -4,7 +4,6 @@ import sys
 import codecs
 import traceback
 import threading
-import importlib
 import torch
 
 import onmt
@@ -13,8 +12,10 @@ from onmt.utils.logging import init_logger
 from onmt.utils.alignment import to_word_align
 from onmt.utils.parse import ArgumentParser
 from onmt.utils.misc import set_random_seed
+from sentence_util.sentence import Sentence
 
 from util import Timer
+from collections import deque
 
 class ServerModelError(Exception):
     pass
@@ -58,18 +59,23 @@ class ServerModel(object):
     """
     abbrev = re.compile(r"(\b([a-z]\.){2,})")
 
-    eastern_to_western = {"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8",
-                          "٩": "9"}
+    def trans_to_object(self, message):
+        return Sentence(message)
 
-    en_digits = re.compile(r'[0-9]+')
-    ar_digits = re.compile(r'\b(?:%s)+\b' % '|'.join(list(eastern_to_western.keys())))
-    zeros = re.compile(r'0+')
+    def encode(self, sent_obj, model_id):
+        sent_list = sent_obj.get_sentence_list()
+        tokenized_list = []
+        for sent in sent_list:
+            tokenized_list.append(' '.join(self.encoders[model_id].encode(sent)))
+        sent_obj.tokenized_list = tokenized_list
+        return sent_obj
 
-    def encode_en2ar(self, message):
-        return ' '.join(self.encoders['en2ar'].encode(message))
+    def encode_en2ar(self, sent_obj):
+        return self.encode(sent_obj, 'en2ar')
 
-    def encode_ar2en(self, message):
-        return ' '.join(self.encoders['ar2en'].encode(message))
+    def encode_ar2en(self, sent_obj):
+        return self.encode(sent_obj, 'ar2en')
+
 
     def decode_en2ar(self, message):
         return ''.join(self.decoders['en2ar'].decode(message.split()))
@@ -82,34 +88,6 @@ class ServerModel(object):
         if len(message) == 0:
             return message
         return message[0].upper() + message[1:]
-
-    def digit_mapping(self, tgt_line, src_line):
-        src_digits = []
-        for m in re.finditer(self.en_digits, src_line):
-            src_digits.append((m.group(0), m.start(), m.end(), 'ar2en'))
-        for m in re.finditer(self.ar_digits, src_line):
-            src_digits.append((m.group(0), m.start(), m.end(), 'en2ar'))
-
-        # sort by start position
-        src_digits = sorted(src_digits, key=lambda z: z[1])
-        for (i, src) in enumerate(src_digits):
-            if src[3] == 'en2ar':
-                en_number = ''.join(self.eastern_to_western[k] for k in src[0])
-                src_digits[i] = (en_number, src[1], src[2], src[3])
-
-        tgt_zeros = []
-        for m in re.finditer(self.zeros, tgt_line):
-            tgt_zeros.append((m.group(0), m.start(), m.end()))
-
-        if len(src_digits) != len(tgt_zeros):
-            print('cannot replace, mismatch in digit occurrences')
-            return tgt_line
-
-        for src, tgt in zip(src_digits, tgt_zeros):
-            tgt_line = tgt_line.replace(tgt[0], src[0], 1)
-        if len(src_digits) > 0:
-            print('correctly replaced')
-        return tgt_line
 
     def to_upper(self, m):
         word = m.group(0)
@@ -157,12 +135,11 @@ class ServerModel(object):
         set_random_seed(self.opt.seed, self.opt.cuda)
 
         self.logger.info("Loading preprocessors and post processors")
-        self.preprocessor = [self.encode_fn[model_id]]
+        self.preprocessor = [self.trans_to_object, self.encode_fn[model_id]]
         self.postprocessor = [
-            {'func': self.decode_fn[model_id], 'need_source': False},
-            {'func': self.digit_mapping, 'need_source': True},
-            {'func': self.first_letter_capitalize, 'need_source': False},
-            {'func': self.abbreviation_capitalize, 'need_source': False}
+            self.decode_fn[model_id],
+            self.first_letter_capitalize,
+            self.abbreviation_capitalize
         ]
 
         if load:
@@ -275,6 +252,7 @@ class ServerModel(object):
         head_spaces = []
         tail_spaces = []
         sslength = []
+        sentence_objs = []
         for i, inp in enumerate(inputs):
             src = inp['src']
             if src.strip() == "":
@@ -290,11 +268,12 @@ class ServerModel(object):
                 if match_after is not None:
                     whitespaces_after = match_after.group(0)
                 head_spaces.append(whitespaces_before)
-                preprocessed_src = self.maybe_preprocess(src.strip())
+                sent_obj = self.maybe_preprocess(src.strip())
+                sentence_objs.append(sent_obj)
                 source_text.append(src.strip())
-                tok = self.maybe_tokenize(preprocessed_src)
-                texts.append(tok)
-                sslength.append(len(tok.split()))
+                tok = self.maybe_tokenize(sent_obj.tokenized_list)
+                texts.extend(tok)
+                sslength.extend([len(token.split()) for token in tok])
                 tail_spaces.append(whitespaces_after)
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
@@ -338,7 +317,8 @@ class ServerModel(object):
         #           for result, src in zip(results, tiled_texts)]
 
         #aligns = [align for _, align in results]
-        results = [self.maybe_postprocess(target, source) for target, source in zip(results, source_lines)]
+        final_result = self.__get_final_result(results, sentence_objs)
+        final_result = [self.maybe_postprocess(message) for message in final_result]
 
         # build back results with empty texts
         for i in empty_indices:
@@ -349,11 +329,21 @@ class ServerModel(object):
 
         head_spaces = [h for h in head_spaces for i in range(self.opt.n_best)]
         tail_spaces = [h for h in tail_spaces for i in range(self.opt.n_best)]
-        results = ["".join(items)
-                   for items in zip(head_spaces, results, tail_spaces)]
+        final_result = ["".join(items)
+                   for items in zip(head_spaces, final_result, tail_spaces)]
 
-        self.logger.info("Translation Results: %d", len(results))
-        return results, scores
+        self.logger.info("Translation Results: %d", len(final_result))
+        return final_result
+
+    def __get_final_result(self, results, sentence_objs):
+        final_result = []
+        deque_result = deque(results)
+        for sent_obj in sentence_objs:
+            trans_list = []
+            for i in range(sent_obj.word_count):
+                trans_list.append(deque_result.popleft())
+            final_result.append(sent_obj.get_translation(trans_list))
+        return final_result
 
     def do_timeout(self):
         """Timeout function that frees GPU memory.
@@ -545,14 +535,14 @@ class ServerModel(object):
             return to_word_align(src, tgt, align, mode=self.tokenizer_marker)
         return align
 
-    def maybe_postprocess(self, target, source):
+    def maybe_postprocess(self, sequence):
         """Postprocess the sequence (or not)
 
         """
-        return self.postprocess(target, source)
+        return self.postprocess(sequence)
 
 
-    def postprocess(self, target, source):
+    def postprocess(self, sequence):
         """Preprocess a single sequence.
 
         Args:
@@ -564,9 +554,6 @@ class ServerModel(object):
         if self.postprocessor is None:
             raise ValueError("No postprocessor loaded")
         for processor in self.postprocessor:
-            if processor['need_source']:
-                target = processor['func'](target, source)
-            else:
-                target = processor['func'](target)
-        return target
+            sequence = processor(sequence)
+        return sequence
 
