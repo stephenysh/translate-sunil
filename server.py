@@ -473,9 +473,7 @@ class ServerModel(object):
                 raise ServerModelError(err)
 
         timer.tick(name="translation")
-        self.logger.info("""Using model #%s\t%d inputs
-               \ttranslation time: %f""" % (self.model_id, len(texts),
-                                            timer.times['translation']))
+        self.logger.info("""Using model [%s], input num [%d], translation time: [%f]""" % (self.model_id, len(texts), timer.times['translation']))
         self.reset_unload_timer()
 
         # NOTE: translator returns lists of `n_best` list
