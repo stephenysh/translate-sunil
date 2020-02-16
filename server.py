@@ -221,12 +221,47 @@ class TranslationServer(object):
         We use inputs[0]["id"] as the model id
         """
 
-        model_id = inputs[0].get("id", 0)
-        if model_id in self.models and self.models[model_id] is not None:
-            return self.models[model_id].run(inputs)
-        else:
-            print("Error No such model '%s'" % str(model_id))
-            raise ServerModelError("No such model '%s'" % str(model_id))
+        inputs_group_by_id = {}
+        idx_group_by_id = {}
+
+        for idx, input in enumerate(inputs):
+            if "id" not in input:
+                print("Error must set model id")
+                raise ServerModelError("Error must set model id")
+
+            model_id =  input.get("id")
+            if model_id not in self.models:
+                print("Error No such model '%s'" % str(model_id))
+                raise ServerModelError("No such model '%s'" % str(model_id))
+
+            if model_id not in inputs_group_by_id.keys():
+                inputs_group_by_id[model_id] = [input]
+                idx_group_by_id[model_id] = [idx]
+            else:
+                inputs_group_by_id[model_id].append(input)
+                idx_group_by_id[model_id].append(idx)
+
+        trans_tmp = []
+        scores_tmp = []
+        index_tmp = []
+
+        for model_id, inputs_per_model_id in inputs_group_by_id.items():
+            if model_id in self.models and self.models[model_id] is not None:
+                trans, scores = self.models[model_id].run(inputs_per_model_id)
+                trans_tmp.extend(trans)
+                scores_tmp.extend(scores)
+            else:
+                trans_tmp.extend([None]*len(inputs_per_model_id))
+                scores_tmp.extend([None]*len(inputs_per_model_id))
+            index_tmp.extend(idx_group_by_id[model_id])
+
+        trans_total = []
+        scores_total = []
+        for idx in range(len(inputs)):
+            trans_total.append(trans_tmp[index_tmp.index(idx)])
+            scores_total.append(scores_tmp[index_tmp.index(idx)])
+
+        return trans_total, scores_total
 
     def unload_model(self, model_id):
         """Manually unload a model.
@@ -805,6 +840,7 @@ def start(config_file,
             maxBytes=1000000, backupCount=10)
         file_handler.setFormatter(log_format)
         logger.addHandler(file_handler)
+        logger.setLevel("INFO")
 
     app = Flask(__name__)
     app.route = prefix_route(app.route, url_root)
@@ -860,9 +896,11 @@ def start(config_file,
 
     @app.route('/translate', methods=['POST'])
     def translate():
+
         inputs = request.get_json(force=True)
         if debug:
-            logger.info(inputs)
+            logger.info("*" * 100)
+            logger.debug(inputs)
         out = {}
         try:
             # trans, scores, n_best, _, aligns = translation_server.run(inputs)
@@ -873,13 +911,13 @@ def start(config_file,
 
             out = []
             for i in range(len(trans)):
-                response = {"src": inputs[i]['src'], "tgt": trans[i], "pred_score": scores[i]}
+                response = {"id": inputs[i]['id'], "src": inputs[i]['src'], "tgt": trans[i], "pred_score": scores[i]}
                 out.append(response)
         except ServerModelError as e:
             out['error'] = str(e)
             out['status'] = STATUS_ERROR
         if debug:
-            logger.info(out)
+            logger.debug(out)
         return jsonify(out)
 
     @app.route('/to_cpu/<model_id>', methods=['GET'])
