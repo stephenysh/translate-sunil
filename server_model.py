@@ -66,16 +66,16 @@ class ServerModel(object):
     zeros = re.compile(r'0+')
 
     def encode_en2ar(self, message):
-        return ' '.join(self.encoders['ar'].encode(message))
+        return ' '.join(self.encoders['en2ar'].encode(message))
 
     def encode_ar2en(self, message):
-        return ' '.join(self.encoders['en'].encode(message))
+        return ' '.join(self.encoders['ar2en'].encode(message))
 
     def decode_en2ar(self, message):
-        return ''.join(self.decoders['ar'].decode(message.split()))
+        return ''.join(self.decoders['en2ar'].decode(message.split()))
 
     def decode_ar2en(self, message):
-        return ''.join(self.decoders['en'].decode(message.split()))
+        return ''.join(self.decoders['ar2en'].decode(message.split()))
 
     def first_letter_capitalize(self, message):
         message = message.strip()
@@ -86,14 +86,14 @@ class ServerModel(object):
     def digit_mapping(self, tgt_line, src_line):
         src_digits = []
         for m in re.finditer(self.en_digits, src_line):
-            src_digits.append((m.group(0), m.start(), m.end(), 'en'))
+            src_digits.append((m.group(0), m.start(), m.end(), 'ar2en'))
         for m in re.finditer(self.ar_digits, src_line):
-            src_digits.append((m.group(0), m.start(), m.end(), 'ar'))
+            src_digits.append((m.group(0), m.start(), m.end(), 'en2ar'))
 
         # sort by start position
         src_digits = sorted(src_digits, key=lambda z: z[1])
         for (i, src) in enumerate(src_digits):
-            if src[3] == 'ar':
+            if src[3] == 'en2ar':
                 en_number = ''.join(self.eastern_to_western[k] for k in src[0])
                 src_digits[i] = (en_number, src[1], src[2], src[3])
 
@@ -149,10 +149,10 @@ class ServerModel(object):
         from bpemb import BPEmb
         arbp = BPEmb(lang="ar", dim=50, vs=50000, cache_dir="bpemb_cache")
         enbp = BPEmb(lang="en", dim=50, vs=50000, cache_dir="bpemb_cache")
-        self.encoders = {"ar": enbp, "en": arbp}
-        self.decoders = {"ar": arbp, "en": enbp}
-        self.encode_fn = {"ar": self.encode_en2ar, "en": self.encode_ar2en}
-        self.decode_fn = {"ar": self.decode_en2ar, "en": self.decode_ar2en}
+        self.encoders = {"en2ar": enbp, "ar2en": arbp}
+        self.decoders = {"en2ar": arbp, "ar2en": enbp}
+        self.encode_fn = {"en2ar": self.encode_en2ar, "ar2en": self.encode_ar2en}
+        self.decode_fn = {"en2ar": self.decode_en2ar, "ar2en": self.decode_ar2en}
 
         set_random_seed(self.opt.seed, self.opt.cuda)
 

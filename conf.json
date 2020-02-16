@@ -2,8 +2,8 @@
     "models_root": "./available_models",
     "models": [
         {
-            "id": "en",
-            "model": "en_trans__step_200000.pt",
+            "id": "ar2en",
+            "model": "ar2en_trans__step_200000.pt",
             "timeout": -1,
             "on_timeout": "to_cpu",
             "load": true,
@@ -50,8 +50,8 @@
             }
         },
         {
-            "id": "ar",
-            "model": "ar_trans__step_240000.pt",
+            "id": "en2ar",
+            "model": "en2ar_trans__step_240000.pt",
             "timeout": -1,
             "on_timeout": "to_cpu",
             "load": true,
