@@ -307,8 +307,8 @@ class ServerModel(object):
         self.running_lock = threading.Semaphore(value=1)
 
         from bpemb import BPEmb
-        arbp = BPEmb(lang="ar", dim=50, vs=50000)
-        enbp = BPEmb(lang="en", dim=50, vs=50000)
+        arbp = BPEmb(lang="ar", dim=50, vs=50000, cache_dir="bpemb_cache")
+        enbp = BPEmb(lang="en", dim=50, vs=50000, cache_dir="bpemb_cache")
         self.encoders = {"ar": enbp, "en": arbp}
         self.decoders = {"ar": arbp, "en": enbp}
         self.encode_fn = {"ar": self.encode_en2ar, "en": self.encode_ar2en}
