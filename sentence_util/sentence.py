@@ -3,6 +3,7 @@ from collections import deque
 
 from sentence_util import WordType
 from sentence_util.regular_filter import RegularFilter
+from sentence_util.file_filter import FileFilter
 
 
 class SingleSentence(object):
@@ -15,7 +16,28 @@ class Sentence(object):
     __url_filer = RegularFilter(
         re=re.compile(r"\b(https?://(?:[\w]+)(?:\.[\w\-]+)+)(?::\d*)?(?:/[^/ ]*)*\b", flags=re.IGNORECASE),
         type=WordType.url)
-    __filter_list = [__url_filer]
+    __email_filter = RegularFilter(
+        re=re.compile(r'[\.\w]+@\w+?(?:\.\w+)+', flags=re.IGNORECASE),
+        type=WordType.email
+    )
+    __emoji_filter = RegularFilter(
+        re=re.compile("["
+                      u"\U0001F600-\U0001F64F"  # emoticons
+                      u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                      u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                      u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                      u"\U00002702-\U000027B0"
+                      u"\U000024C2-\U0001F251"
+                      "]+", flags=re.UNICODE),
+        type=WordType.emoji
+    )
+    __acronymn_filter = FileFilter(file_path='conf/wikipedia-acronyms-simple.json', type=WordType.acronymn)
+    __filter_list = [
+        __url_filer,
+        __email_filter,
+        __emoji_filter,
+        __acronymn_filter
+    ]
 
     def __init__(self, sentence):
         self.sentence = sentence
@@ -69,4 +91,4 @@ class Sentence(object):
 if __name__ == '__main__':
     msg = "Please visit us at http://www.google.com for more information. https://www.aaa.com"
     sent_obj = Sentence(msg)
-    print(sent_obj.get_translation(['11 ',' 22 ']))
+    print(sent_obj.get_translation(['11 ', ' 22 ']))
