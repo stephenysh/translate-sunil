@@ -248,10 +248,8 @@ class ServerModel(object):
                 timer.tick(name="to_gpu")
 
         texts = []
-        source_text = []
         head_spaces = []
         tail_spaces = []
-        sslength = []
         sentence_objs = []
         for i, inp in enumerate(inputs):
             src = inp['src']
@@ -270,15 +268,12 @@ class ServerModel(object):
                 head_spaces.append(whitespaces_before)
                 sent_obj = self.maybe_preprocess(src.strip())
                 sentence_objs.append(sent_obj)
-                source_text.append(src.strip())
                 tok = self.maybe_tokenize(sent_obj.tokenized_list)
                 texts.extend(tok)
-                sslength.extend([len(token.split()) for token in tok])
                 tail_spaces.append(whitespaces_after)
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
         texts_to_translate = [x for x in texts if x != ""]
-        source_lines = [x for x in source_text if x != ""]
 
         scores = []
         predictions = []
