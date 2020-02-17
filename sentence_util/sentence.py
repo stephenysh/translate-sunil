@@ -2,8 +2,8 @@ import re
 from collections import deque
 
 from sentence_util import WordType
-from sentence_util.file_filter import FileFilter
 from sentence_util.regular_filter import RegularFilter
+from sentence_util.file_filter import FileFilter
 
 
 class SingleSentence(object):
@@ -14,7 +14,7 @@ class SingleSentence(object):
 
 class Sentence(object):
     __url_filer = RegularFilter(
-        re=re.compile(r"\b(https?://(?:[\w]+)(?:\.[\w\-]+)+)(?::\d*)?(?:/[^/ ]*)*(\?[^ \?]*)?\b", flags=re.IGNORECASE),
+        re=re.compile(r"\b(https?://(?:[\w]+)(?:\.[\w\-]+)+)(?::\d*)?(?:/[^/ ]*)*\b", flags=re.IGNORECASE),
         type=WordType.url)
     __email_filter = RegularFilter(
         re=re.compile(r'[\.\w]+@\w+?(?:\.\w+)+', flags=re.IGNORECASE),
@@ -70,34 +70,6 @@ class Sentence(object):
             for m in re.finditer(re_filter.re, self.sentence):
                 sp_words.append((m.group(0), m.start(), m.end(), re_filter.type))
         self.special_words = sorted(sp_words, key=lambda z: z[1])
-        self.__merge_overlap()
-
-    def __merge_overlap(self):
-        temp_result = []
-        i = 0
-        while i < len(self.special_words):
-            word_a = self.special_words[i]
-            if i == len(self.special_words) - 1:
-                temp_result.append(word_a)
-            flag_add_to_list = False
-            for j in range(i + 1, len(self.special_words)):
-                word_b = self.special_words[j]
-                if word_b[1] <= word_a[2] < word_b[2]:
-                    if not flag_add_to_list:
-                        flag_add_to_list = True
-                        temp_result.append((self.sentence[word_a[1]:word_b[2]], word_a[1], word_b[2], WordType.mix))
-                    i += 1
-                elif word_a[2] >= word_b[2]:
-                    if not flag_add_to_list:
-                        flag_add_to_list = True
-                        temp_result.append(word_a)
-                    i += 1
-                else:
-                    if not flag_add_to_list:
-                        temp_result.append(word_a)
-                    break
-            i += 1
-        self.special_words = sorted(temp_result, key=lambda z: z[1])
 
     def __split_sentence(self):
         index = 0

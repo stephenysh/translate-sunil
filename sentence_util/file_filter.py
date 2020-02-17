@@ -19,4 +19,4 @@ class FileFilter(RegularFilter):
                     break
                 words.append(text.strip())
         words = set(words)
-        self.re = re.compile('|'.join([rf'\b{word}\b' for word in words]))
+        self.re = re.compile('|'.join([f'\b{word}\b' for word in words]))
