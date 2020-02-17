@@ -1,27 +1,30 @@
-import re
-import os
-import sys
 import codecs
-import traceback
+import os
+import re
+import sys
 import threading
-import torch
+import traceback
+from collections import deque
 
 import onmt.opts
+import torch
 from onmt.translate.translator import build_translator
-from onmt.utils.logging import init_logger
 from onmt.utils.alignment import to_word_align
-from onmt.utils.parse import ArgumentParser
+from onmt.utils.logging import init_logger
 from onmt.utils.misc import set_random_seed
-from sentence_util.sentence import Sentence
+from onmt.utils.parse import ArgumentParser
 
+from sentence_util.sentence import Sentence
 from util import Timer
-from collections import deque
+
 
 class ServerModelError(Exception):
     pass
 
+
 def critical(func):
     """Decorator for critical section (mutually exclusive code)"""
+
     def wrapper(server_model, *args, **kwargs):
         if sys.version_info[0] == 3:
             if not server_model.running_lock.acquire(True, 120):
@@ -37,7 +40,9 @@ def critical(func):
         finally:
             server_model.running_lock.release()
         return o
+
     return wrapper
+
 
 class ServerModel(object):
     """Wrap a model with server functionality.
@@ -59,6 +64,41 @@ class ServerModel(object):
     """
     abbrev = re.compile(r"(\b([a-z]\.){2,})")
 
+    eastern_to_western = {"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8",
+                          "٩": "9"}
+
+    en_digits = re.compile(r'[0-9]+')
+    ar_digits = re.compile(r'\b(?:%s)+\b' % '|'.join(list(eastern_to_western.keys())))
+    zeros = re.compile(r'0+')
+
+    def digit_mapping(self, tgt_line, src_line):
+        src_digits = []
+        for m in re.finditer(self.en_digits, src_line):
+            src_digits.append((m.group(0), m.start(), m.end(), 'en'))
+        for m in re.finditer(self.ar_digits, src_line):
+            src_digits.append((m.group(0), m.start(), m.end(), 'ar'))
+
+        # sort by start position
+        src_digits = sorted(src_digits, key=lambda z: z[1])
+        for (i, src) in enumerate(src_digits):
+            if src[3] == 'ar':
+                en_number = ''.join(self.eastern_to_western[k] for k in src[0])
+                src_digits[i] = (en_number, src[1], src[2], src[3])
+
+        tgt_zeros = []
+        for m in re.finditer(self.zeros, tgt_line):
+            tgt_zeros.append((m.group(0), m.start(), m.end()))
+
+        if len(src_digits) != len(tgt_zeros):
+            self.logger.info('cannot replace, mismatch in digit occurrences')
+            return tgt_line
+
+        for src, tgt in zip(src_digits, tgt_zeros):
+            tgt_line = tgt_line.replace(tgt[0], src[0], 1)
+        if len(src_digits) > 0:
+            self.logger.info('digits correctly replaced')
+        return tgt_line
+
     def trans_to_object(self, message):
         return Sentence(message)
 
@@ -75,7 +115,6 @@ class ServerModel(object):
 
     def encode_ar2en(self, sent_obj):
         return self.encode(sent_obj, 'ar2en')
-
 
     def decode_en2ar(self, message):
         return ''.join(self.decoders['en2ar'].decode(message.split()))
@@ -137,9 +176,10 @@ class ServerModel(object):
         self.logger.info("Loading preprocessors and post processors")
         self.preprocessor = [self.trans_to_object, self.encode_fn[model_id]]
         self.postprocessor = [
-            self.decode_fn[model_id],
-            self.first_letter_capitalize,
-            self.abbreviation_capitalize
+            {'func': self.decode_fn[model_id], 'need_source': False},
+            {'func': self.digit_mapping, 'need_source': True},
+            {'func': self.first_letter_capitalize, 'need_source': False},
+            {'func': self.abbreviation_capitalize, 'need_source': False}
         ]
 
         if load:
@@ -171,7 +211,7 @@ class ServerModel(object):
             if k == 'models':
                 sys.argv += ['-model']
                 sys.argv += [str(model) for model in v]
-            elif type(v) == bool: # only true bool should be parsed
+            elif type(v) == bool:  # only true bool should be parsed
                 if v is True:
                     sys.argv += ['-%s' % k]
             else:
@@ -250,6 +290,7 @@ class ServerModel(object):
         texts = []
         head_spaces = []
         tail_spaces = []
+        source_text = []
         sentence_objs = []
         for i, inp in enumerate(inputs):
             src = inp['src']
@@ -268,12 +309,14 @@ class ServerModel(object):
                 head_spaces.append(whitespaces_before)
                 sent_obj = self.maybe_preprocess(src.strip())
                 sentence_objs.append(sent_obj)
+                source_text.append(src.strip())
                 tok = self.maybe_tokenize(sent_obj.tokenized_list)
                 texts.extend(tok)
                 tail_spaces.append(whitespaces_after)
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
         texts_to_translate = [x for x in texts if x != ""]
+        source_lines = [x for x in source_text if x != ""]
 
         scores = []
         predictions = []
@@ -297,23 +340,26 @@ class ServerModel(object):
                 raise ServerModelError(err)
 
         timer.tick(name="translation")
-        self.logger.info("""Using model [%s], input num [%d], translation time: [%f]""" % (self.model_id, len(texts), timer.times['translation']))
+        self.logger.info("""Using model [%s], input num [%d], translation time: [%f]""" % (
+            self.model_id, len(texts), timer.times['translation']))
         self.reset_unload_timer()
 
         # NOTE: translator returns lists of `n_best` list
-        def flatten_list(_list): return sum(_list, [])
-        #tiled_texts = [t for t in texts_to_translate
+        def flatten_list(_list):
+            return sum(_list, [])
+
+        # tiled_texts = [t for t in texts_to_translate
         #               for _ in range(self.opt.n_best)]
         results = flatten_list(predictions)
         scores = [score_tensor.item()
                   for score_tensor in flatten_list(scores)]
 
-        #results = [self.maybe_detokenize_with_align(result, src)
+        # results = [self.maybe_detokenize_with_align(result, src)
         #           for result, src in zip(results, tiled_texts)]
 
-        #aligns = [align for _, align in results]
+        # aligns = [align for _, align in results]
         final_result = self.__get_final_result(results, sentence_objs)
-        final_result = [self.maybe_postprocess(message) for message in final_result]
+        final_result = [self.maybe_postprocess(target, source) for target, source in zip(final_result, source_lines)]
 
         # build back results with empty texts
         for i in empty_indices:
@@ -325,7 +371,7 @@ class ServerModel(object):
         head_spaces = [h for h in head_spaces for i in range(self.opt.n_best)]
         tail_spaces = [h for h in tail_spaces for i in range(self.opt.n_best)]
         final_result = ["".join(items)
-                   for items in zip(head_spaces, final_result, tail_spaces)]
+                        for items in zip(head_spaces, final_result, tail_spaces)]
 
         self.logger.info("Translation Results: %d", len(final_result))
         return final_result
@@ -406,7 +452,6 @@ class ServerModel(object):
 
         """
         return self.preprocess(sequence)
-
 
     def preprocess(self, sequence):
         """Preprocess a single sequence.
@@ -530,14 +575,13 @@ class ServerModel(object):
             return to_word_align(src, tgt, align, mode=self.tokenizer_marker)
         return align
 
-    def maybe_postprocess(self, sequence):
+    def maybe_postprocess(self, target, source):
         """Postprocess the sequence (or not)
 
         """
-        return self.postprocess(sequence)
+        return self.postprocess(target, source)
 
-
-    def postprocess(self, sequence):
+    def postprocess(self, target, source):
         """Preprocess a single sequence.
 
         Args:
@@ -549,6 +593,8 @@ class ServerModel(object):
         if self.postprocessor is None:
             raise ValueError("No postprocessor loaded")
         for processor in self.postprocessor:
-            sequence = processor(sequence)
-        return sequence
-
+            if processor['need_source']:
+                target = processor['func'](target, source)
+            else:
+                target = processor['func'](target)
+        return target
