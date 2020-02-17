@@ -6,7 +6,7 @@ import traceback
 import threading
 import torch
 
-import onmt
+import onmt.opts
 from onmt.translate.translator import build_translator
 from onmt.utils.logging import init_logger
 from onmt.utils.alignment import to_word_align
@@ -32,6 +32,8 @@ def critical(func):
             server_model.running_lock.acquire(True)
         try:
             o = func(server_model, *args, **kwargs)
+        except Exception as e:
+            raise
         finally:
             server_model.running_lock.release()
         return o

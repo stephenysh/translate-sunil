@@ -89,7 +89,7 @@ def start(config_file,
         inputs = request.get_json(force=True)
         if debug:
             logger.info("*" * 100)
-            logger.debug(inputs)
+            logger.info(inputs)
         out = {}
         try:
             # trans, scores, n_best, _, aligns = translation_server.run(inputs)
@@ -106,7 +106,7 @@ def start(config_file,
             out['error'] = str(e)
             out['status'] = STATUS_ERROR
         if debug:
-            logger.debug(out)
+            logger.info(out)
         return jsonify(out)
 
     @app.route('/to_cpu/<model_id>', methods=['GET'])
