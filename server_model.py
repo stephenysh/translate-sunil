@@ -32,10 +32,8 @@ def critical(func):
             server_model.running_lock.acquire(True)
         try:
             o = func(server_model, *args, **kwargs)
-        except (Exception, RuntimeError):
+        finally:
             server_model.running_lock.release()
-            raise
-        server_model.running_lock.release()
         return o
     return wrapper
 
