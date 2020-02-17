@@ -8,3 +8,4 @@ class WordType(Enum):
     email = 'email'
     emoji = 'emoji'
     acronymn = 'acronymn'
+    mix = 'mix'
