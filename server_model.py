@@ -163,20 +163,11 @@ class ServerModel(object):
         self.loading_lock.set()
         self.running_lock = threading.Semaphore(value=1)
 
-        from bpemb import BPEmb
-        arbp = BPEmb(lang="ar", dim=50, vs=50000, cache_dir="bpemb_cache")
-        enbp = BPEmb(lang="en", dim=50, vs=50000, cache_dir="bpemb_cache")
-        self.encoders = {"en2ar": enbp, "ar2en": arbp}
-        self.decoders = {"en2ar": arbp, "ar2en": enbp}
-        self.encode_fn = {"en2ar": self.encode_en2ar, "ar2en": self.encode_ar2en}
-        self.decode_fn = {"en2ar": self.decode_en2ar, "ar2en": self.decode_ar2en}
-
         set_random_seed(self.opt.seed, self.opt.cuda)
 
         self.logger.info("Loading preprocessors and post processors")
-        self.preprocessor = [self.trans_to_object, self.encode_fn[model_id]]
+        self.preprocessor = [self.trans_to_object]
         self.postprocessor = [
-            {'func': self.decode_fn[model_id], 'need_source': False},
             {'func': self.digit_mapping, 'need_source': True},
             {'func': self.first_letter_capitalize, 'need_source': False},
             {'func': self.abbreviation_capitalize, 'need_source': False}
