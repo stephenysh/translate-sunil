@@ -2,6 +2,7 @@ OpenNMT-py
 Flask
 waitress
 nltk
+PyICU-2.4.2-cp37-cp37m-linux_x86_64.whl
 polyglot
 pycld2
 morfessor
