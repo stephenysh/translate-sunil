@@ -1,7 +1,6 @@
 OpenNMT-py
 Flask
 waitress
-bpemb
 nltk
 polyglot
 pycld2
