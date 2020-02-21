@@ -4,6 +4,7 @@ import re
 import sys
 import threading
 import traceback
+from functools import partial
 from collections import deque
 
 import onmt.opts
@@ -17,6 +18,9 @@ from onmt.utils.parse import ArgumentParser
 from sentence_util.sentence import Sentence
 from util import Timer
 
+from preprocess import process_on_sentence_obj
+from preprocess.moses import do_moses
+from preprocess.morfessor import do_morfessor
 
 class ServerModelError(Exception):
     pass
@@ -102,26 +106,6 @@ class ServerModel(object):
     def trans_to_object(self, message):
         return Sentence(message)
 
-    def encode(self, sent_obj, model_id):
-        sent_list = sent_obj.get_sentence_list()
-        tokenized_list = []
-        for sent in sent_list:
-            tokenized_list.append(' '.join(self.encoders[model_id].encode(sent)))
-        sent_obj.tokenized_list = tokenized_list
-        return sent_obj
-
-    def encode_en2ar(self, sent_obj):
-        return self.encode(sent_obj, 'en2ar')
-
-    def encode_ar2en(self, sent_obj):
-        return self.encode(sent_obj, 'ar2en')
-
-    def decode_en2ar(self, message):
-        return ''.join(self.decoders['en2ar'].decode(message.split()))
-
-    def decode_ar2en(self, message):
-        return ''.join(self.decoders['ar2en'].decode(message.split()))
-
     def first_letter_capitalize(self, message):
         message = message.strip()
         if len(message) == 0:
@@ -166,7 +150,12 @@ class ServerModel(object):
         set_random_seed(self.opt.seed, self.opt.cuda)
 
         self.logger.info("Loading preprocessors and post processors")
-        self.preprocessor = [self.trans_to_object]
+        self.preprocessor = [
+            self.trans_to_object,
+            partial(process_on_sentence_obj, func=partial(do_moses, lang=self.model_id)),
+            partial(process_on_sentence_obj, func=partial(do_morfessor, lang=self.model_id))
+        ]
+
         self.postprocessor = [
             {'func': self.digit_mapping, 'need_source': True},
             {'func': self.first_letter_capitalize, 'need_source': False},
@@ -293,17 +282,22 @@ class ServerModel(object):
                 whitespaces_before, whitespaces_after = "", ""
                 match_before = re.search(r'^\s+', src)
                 match_after = re.search(r'\s+$', src)
+
                 if match_before is not None:
                     whitespaces_before = match_before.group(0)
                 if match_after is not None:
                     whitespaces_after = match_after.group(0)
+
                 head_spaces.append(whitespaces_before)
+                tail_spaces.append(whitespaces_after)
+
                 sent_obj = self.maybe_preprocess(src.strip())
                 sentence_objs.append(sent_obj)
+
                 source_text.append(src.strip())
+
                 tok = self.maybe_tokenize(sent_obj.tokenized_list)
                 texts.extend(tok)
-                tail_spaces.append(whitespaces_after)
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
         texts_to_translate = [x for x in texts if x != ""]
@@ -313,11 +307,6 @@ class ServerModel(object):
         predictions = []
         if len(texts_to_translate) > 0:
             try:
-                # scores, predictions = self.translator.translate(
-                #     texts_to_translate,
-                #     batch_size=len(texts_to_translate)
-                #     if self.opt.batch_size == 0
-                #     else self.opt.batch_size)
                 scores, predictions = self.translator.translate(texts_to_translate, None, '', 1, 'sent', False, False)
             except (RuntimeError, Exception) as e:
                 err = "Error: %s" % str(e)
@@ -339,16 +328,10 @@ class ServerModel(object):
         def flatten_list(_list):
             return sum(_list, [])
 
-        # tiled_texts = [t for t in texts_to_translate
-        #               for _ in range(self.opt.n_best)]
         results = flatten_list(predictions)
         scores = [score_tensor.item()
                   for score_tensor in flatten_list(scores)]
 
-        # results = [self.maybe_detokenize_with_align(result, src)
-        #           for result, src in zip(results, tiled_texts)]
-
-        # aligns = [align for _, align in results]
         final_result = self.__get_final_result(results, sentence_objs)
         final_result = [self.maybe_postprocess(target, source) for target, source in zip(final_result, source_lines)]
 
@@ -576,7 +559,7 @@ class ServerModel(object):
         """Preprocess a single sequence.
 
         Args:
-            sequence (str): The sequence to process.
+            sequence (str): The sequence to preprocess.
 
         Returns:
             sequence (str): The postprocessed sequence.
