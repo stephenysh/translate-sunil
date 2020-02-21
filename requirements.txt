@@ -2,3 +2,9 @@ OpenNMT-py
 Flask
 waitress
 bpemb
+nltk
+polyglot
+pycld2
+morfessor
+mosestokenizer
+flair
