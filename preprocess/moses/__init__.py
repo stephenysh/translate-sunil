@@ -25,7 +25,7 @@ def do_moses(input_texts:list, lang='en2ar') -> list:
     for text in input_texts:
         cmd += f" '{text}'" # space and text inside quotes
 
-    output = subprocess.check_output(cmd, shell=True)
+    output = subprocess.run(cmd, capture_output=True, shell=True).stdout # get byte output, don not print output
 
     output = output.decode('utf-8').split('\n')
     output = [item for item in output if item is not '']

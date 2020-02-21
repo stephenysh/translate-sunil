@@ -1,9 +1,9 @@
-import logging
+import logger
 import configargparse
 from flask import Flask, jsonify, request
 from waitress import serve
-from logging.handlers import RotatingFileHandler
 
+from logger import init_logger
 from server_model import ServerModelError
 from translation_server import TranslationServer
 
@@ -21,15 +21,8 @@ def start(config_file,
         return newroute
 
     if debug:
-        logger = logging.getLogger("main")
-        log_format = logging.Formatter(
-            "[%(asctime)s %(levelname)s] %(message)s")
-        file_handler = RotatingFileHandler(
-            "debug_requests.log",
-            maxBytes=1000000, backupCount=10)
-        file_handler.setFormatter(log_format)
-        logger.addHandler(file_handler)
-        logger.setLevel("INFO")
+        logger = init_logger(__name__, None)
+
 
     app = Flask(__name__)
     app.route = prefix_route(app.route, url_root)

@@ -3,7 +3,7 @@
     "models": [
         {
             "id": "ar2en",
-            "model": "ar2en_trans__step_200000.pt",
+            "model": "ar2en_large_v1_step_120000.pt",
             "timeout": -1,
             "on_timeout": "to_cpu",
             "load": true,
@@ -51,7 +51,7 @@
         },
         {
             "id": "en2ar",
-            "model": "en2ar_trans__step_240000.pt",
+            "model": "en2ar_large_v1_step_120000.pt",
             "timeout": -1,
             "on_timeout": "to_cpu",
             "load": true,

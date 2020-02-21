@@ -11,9 +11,9 @@ import onmt.opts
 import torch
 from onmt.translate.translator import build_translator
 from onmt.utils.alignment import to_word_align
-from onmt.utils.logging import init_logger
 from onmt.utils.misc import set_random_seed
 from onmt.utils.parse import ArgumentParser
+from onmt.utils.logging import init_logger
 
 from post_processor.abbrev_processor import AbbrevProcessor
 from post_processor.detokenization_processor import DetokenizationProcessor
@@ -25,6 +25,7 @@ from preprocess.morfessor import do_morfessor
 from preprocess.moses import do_moses
 from sentence_util.sentence import Sentence
 from util import Timer
+from logger import init_logger
 
 
 class ServerModelError(Exception):
@@ -109,8 +110,8 @@ class ServerModel(object):
             log_file = os.path.join(model_root, self.opt.log_file)
         else:
             log_file = None
-        self.logger = init_logger(log_file=log_file,
-                                  log_file_level=self.opt.log_file_level)
+        self.logger = init_logger(__name__,
+                                  log_file=None)
 
         self.loading_lock = threading.Event()
         self.loading_lock.set()
