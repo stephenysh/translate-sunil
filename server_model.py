@@ -4,8 +4,8 @@ import re
 import sys
 import threading
 import traceback
-from functools import partial
 from collections import deque
+from functools import partial
 
 import onmt.opts
 import torch
@@ -15,12 +15,17 @@ from onmt.utils.logging import init_logger
 from onmt.utils.misc import set_random_seed
 from onmt.utils.parse import ArgumentParser
 
+from post_processor.abbrev_processor import AbbrevProcessor
+from post_processor.detokenization_processor import DetokenizationProcessor
+from post_processor.digit_processor import DigitProcessor
+from post_processor.ner_processor import NerProcessor
+from post_processor.post_processor import PostProcessor
+from preprocess import process_on_sentence_obj
+from preprocess.morfessor import do_morfessor
+from preprocess.moses import do_moses
 from sentence_util.sentence import Sentence
 from util import Timer
 
-from preprocess import process_on_sentence_obj
-from preprocess.moses import do_moses
-from preprocess.morfessor import do_morfessor
 
 class ServerModelError(Exception):
     pass
@@ -66,42 +71,6 @@ class ServerModel(object):
         model_root (str): Path to the model directory
             it must contain the model and tokenizer file
     """
-    abbrev = re.compile(r"(\b([a-z]\.){2,})")
-
-    eastern_to_western = {"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8",
-                          "٩": "9"}
-
-    en_digits = re.compile(r'[0-9]+')
-    ar_digits = re.compile(r'\b(?:%s)+\b' % '|'.join(list(eastern_to_western.keys())))
-    zeros = re.compile(r'0+')
-
-    def digit_mapping(self, tgt_line, src_line):
-        src_digits = []
-        for m in re.finditer(self.en_digits, src_line):
-            src_digits.append((m.group(0), m.start(), m.end(), 'en'))
-        for m in re.finditer(self.ar_digits, src_line):
-            src_digits.append((m.group(0), m.start(), m.end(), 'ar'))
-
-        # sort by start position
-        src_digits = sorted(src_digits, key=lambda z: z[1])
-        for (i, src) in enumerate(src_digits):
-            if src[3] == 'ar':
-                en_number = ''.join(self.eastern_to_western[k] for k in src[0])
-                src_digits[i] = (en_number, src[1], src[2], src[3])
-
-        tgt_zeros = []
-        for m in re.finditer(self.zeros, tgt_line):
-            tgt_zeros.append((m.group(0), m.start(), m.end()))
-
-        if len(src_digits) != len(tgt_zeros):
-            self.logger.info('cannot replace, mismatch in digit occurrences')
-            return tgt_line
-
-        for src, tgt in zip(src_digits, tgt_zeros):
-            tgt_line = tgt_line.replace(tgt[0], src[0], 1)
-        if len(src_digits) > 0:
-            self.logger.info('digits correctly replaced')
-        return tgt_line
 
     def trans_to_object(self, message):
         return Sentence(message)
@@ -157,9 +126,10 @@ class ServerModel(object):
         ]
 
         self.postprocessor = [
-            {'func': self.digit_mapping, 'need_source': True},
-            {'func': self.first_letter_capitalize, 'need_source': False},
-            {'func': self.abbreviation_capitalize, 'need_source': False}
+            DetokenizationProcessor(),
+            DigitProcessor(),
+            NerProcessor(),
+            AbbrevProcessor()
         ]
 
         if load:
@@ -270,7 +240,6 @@ class ServerModel(object):
         texts = []
         head_spaces = []
         tail_spaces = []
-        source_text = []
         sentence_objs = []
         for i, inp in enumerate(inputs):
             src = inp['src']
@@ -294,14 +263,11 @@ class ServerModel(object):
                 sent_obj = self.maybe_preprocess(src.strip())
                 sentence_objs.append(sent_obj)
 
-                source_text.append(src.strip())
-
                 tok = self.maybe_tokenize(sent_obj.tokenized_list)
                 texts.extend(tok)
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
         texts_to_translate = [x for x in texts if x != ""]
-        source_lines = [x for x in source_text if x != ""]
 
         scores = []
         predictions = []
@@ -332,9 +298,9 @@ class ServerModel(object):
         scores = [score_tensor.item()
                   for score_tensor in flatten_list(scores)]
 
-        final_result = self.__get_final_result(results, sentence_objs)
-        final_result = [self.maybe_postprocess(target, source) for target, source in zip(final_result, source_lines)]
-
+        source_lines = [line for obj in sentence_objs for line in obj.get_sentence_list()]
+        final_result = [self.maybe_postprocess(target, source) for target, source in zip(results, source_lines)]
+        final_result = self.__get_final_result(final_result, sentence_objs)
         # build back results with empty texts
         for i in empty_indices:
             j = i * self.opt.n_best
@@ -567,8 +533,6 @@ class ServerModel(object):
         if self.postprocessor is None:
             raise ValueError("No postprocessor loaded")
         for processor in self.postprocessor:
-            if processor['need_source']:
-                target = processor['func'](target, source)
-            else:
-                target = processor['func'](target)
+            assert isinstance(processor, PostProcessor)
+            target = processor.process(target, source, self.model_id)
         return target
