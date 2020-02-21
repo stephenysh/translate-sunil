@@ -54,6 +54,12 @@ class Sentence(object):
                 sentences.append(sentence_obj.sentence)
         return sentences
 
+    def __first_letter_cap(self, pred):
+        line = pred.strip()
+        if len(line) == 0:
+            return line
+        return line[0].upper() + line[1:]
+
     def get_translation(self, translate_list):
         deque_list = deque(translate_list)
         trans_list = []
@@ -62,7 +68,7 @@ class Sentence(object):
                 trans_list.append(deque_list.popleft())
             else:
                 trans_list.append(sent_obj.sentence)
-        return " ".join(trans_list)
+        return self.__first_letter_cap(" ".join(trans_list))
 
     def __detect_special_char(self):
         sp_words = []

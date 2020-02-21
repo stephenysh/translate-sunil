@@ -1,0 +1,1 @@
+from model.utils.generate_vocabulary_for_dataset import KnownWordCharacter
