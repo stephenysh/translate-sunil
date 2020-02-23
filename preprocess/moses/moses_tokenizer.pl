@@ -4,7 +4,7 @@
 # Public License version 2.1 or, at your option, any later version.
 
 use warnings;
-
+use utf8;
 # Sample Tokenizer
 ### Version 1.1
 # written by Pidong Wang, based on the code written by Josh Schroeder and Philipp Koehn
@@ -180,6 +180,7 @@ else
 {# single thread only
     foreach(@inputs)
     {
+        utf8::decode($_);
         if (($SKIP_XML && /^<.+>$/) || /^\s*$/)
         {
             #don't try to tokenize XML/HTML tag lines
