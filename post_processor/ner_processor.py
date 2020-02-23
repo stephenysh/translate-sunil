@@ -6,4 +6,7 @@ class NerProcessor(PostProcessor):
     ner_model = NERModel()
 
     def process(self, pred, source, model_id):
-        return self.ner_model.entity_capitalization(pred)
+        if model_id == 'ar2en':
+            return self.ner_model.entity_capitalization(pred)
+        else:
+            return pred
