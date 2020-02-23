@@ -1,7 +1,10 @@
 # from NERModule import NERModel
 import pickle
-
+from pathlib import Path
 import nltk
+current_path = Path(__file__).parent.resolve()
+nltk.data.path += [str(current_path / 'nltk_data')]
+
 import numpy as np
 import torch
 
