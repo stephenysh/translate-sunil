@@ -1,6 +1,8 @@
 import re
 from collections import deque
 
+from nltk.tokenize import sent_tokenize
+
 from sentence_util import WordType
 from sentence_util.file_filter import FileFilter
 from sentence_util.regular_filter import RegularFilter
@@ -39,10 +41,15 @@ class Sentence(object):
         __acronymn_filter
     ]
 
-    def __init__(self, sentence):
+    MAX_WORD = 30
+
+    def __init__(self, sentence, is_split):
         self.sentence = sentence
+        self.is_split = is_split
+
         self.word_count = 0
         self.split_sentences = []
+        self.tokenized_list = []
         self.special_words = []
         self.__detect_special_char()
         self.__split_sentence()
@@ -110,16 +117,38 @@ class Sentence(object):
         for sp_word in self.special_words:
             word_part = self.sentence[index:sp_word[1]].strip()
             if len(word_part) > 0:
-                self.split_sentences.append(SingleSentence(sentence=word_part, type=WordType.word))
-                self.word_count += 1
+                self.__handle_is_split(word_part)
 
             sp_word_part = self.sentence[sp_word[1]:sp_word[2]].strip()
             self.split_sentences.append(SingleSentence(sentence=sp_word_part, type=sp_word[3]))
             index = sp_word[2]
         last_part = self.sentence[index:].strip()
         if len(last_part) > 0:
-            self.split_sentences.append(SingleSentence(sentence=last_part, type=WordType.word))
-            self.word_count += 1
+            self.__handle_is_split(last_part)
+
+    def __handle_is_split(self, word_part):
+        if not self.is_split:
+            self.__add_split_sent(word_part)
+        else:
+            sent_list = sent_tokenize(word_part)
+            for sent in sent_list:
+                self.__handle_sent_over_len(sent)
+
+    def __handle_sent_over_len(self, sent):
+        if len(sent.split(" ")) > self.MAX_WORD:
+            word_list = sent.split(" ")
+            index = 0
+            while len(word_list[index:]) > self.MAX_WORD:
+                self.__add_split_sent(" ".join(word_list[index:index + self.MAX_WORD]))
+                index += self.MAX_WORD
+            self.__add_split_sent(" ".join(word_list[index:]))
+        else:
+            self.__add_split_sent(sent)
+
+    def __add_split_sent(self, sent):
+        self.split_sentences.append(SingleSentence(sentence=sent, type=WordType.word))
+        self.tokenized_list.append(sent)
+        self.word_count += 1
 
 
 if __name__ == '__main__':

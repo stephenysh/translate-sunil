@@ -5,7 +5,6 @@ import sys
 import threading
 import traceback
 from collections import deque
-from functools import partial
 
 import onmt.opts
 import torch
@@ -20,10 +19,10 @@ from post_processor.abbrev_processor import AbbrevProcessor
 from post_processor.detokenization_processor import DetokenizationProcessor
 from post_processor.ner_processor import NerProcessor
 from post_processor.post_processor import PostProcessor
-from preprocess import process_on_sentence_obj
-from preprocess.morfessor import do_morfessor
-from preprocess.moses import do_moses
-from sentence_util.sentence import Sentence
+from preprocess.morfessor_processor import MorfessorProcessor
+from preprocess.moses_processor import MosesProcessor
+from preprocess.sent_obj_processor import SentObjProcessor
+from preprocess.pre_processor import PreProcessor
 from util import Timer
 
 
@@ -72,22 +71,6 @@ class ServerModel(object):
             it must contain the model and tokenizer file
     """
 
-    def trans_to_object(self, message):
-        return Sentence(message)
-
-    def first_letter_capitalize(self, message):
-        message = message.strip()
-        if len(message) == 0:
-            return message
-        return message[0].upper() + message[1:]
-
-    def to_upper(self, m):
-        word = m.group(0)
-        return word.upper()
-
-    def abbreviation_capitalize(self, line):
-        return re.sub(self.abbrev, self.to_upper, line)
-
     def __init__(self, opt, model_id, preprocess_opt=None, tokenizer_opt=None,
                  postprocess_opt=None, load=False, timeout=-1,
                  on_timeout="to_cpu", model_root="./"):
@@ -120,9 +103,9 @@ class ServerModel(object):
 
         self.logger.info("Loading preprocessors and post processors")
         self.preprocessor = [
-            self.trans_to_object,
-            partial(process_on_sentence_obj, func=partial(do_moses, lang=self.model_id)),
-            partial(process_on_sentence_obj, func=partial(do_morfessor, lang=self.model_id))
+            SentObjProcessor(),
+            MosesProcessor(),
+            MorfessorProcessor()
         ]
 
         self.postprocessor = [
@@ -202,7 +185,7 @@ class ServerModel(object):
         self.loading_lock.set()
 
     @critical
-    def run(self, inputs):
+    def run(self, inputs, is_split=False):
         """Translate `inputs` using this model
 
         Args:
@@ -212,7 +195,6 @@ class ServerModel(object):
             result (list): translations
             times (dict): containing times
         """
-
         self.stop_unload_timer()
 
         timer = Timer()
@@ -259,7 +241,7 @@ class ServerModel(object):
                 head_spaces.append(whitespaces_before)
                 tail_spaces.append(whitespaces_after)
 
-                sent_obj = self.maybe_preprocess(src.strip())
+                sent_obj = self.maybe_preprocess(src.strip(), is_split)
                 sentence_objs.append(sent_obj)
 
                 tok = self.maybe_tokenize(sent_obj.tokenized_list)
@@ -386,13 +368,13 @@ class ServerModel(object):
         torch.cuda.set_device(self.opt.gpu)
         self.translator.model.cuda()
 
-    def maybe_preprocess(self, sequence):
+    def maybe_preprocess(self, sequence, is_split):
         """Preprocess the sequence (or not)
 
         """
-        return self.preprocess(sequence)
+        return self.preprocess(sequence, is_split)
 
-    def preprocess(self, sequence):
+    def preprocess(self, sequence, is_split):
         """Preprocess a single sequence.
 
         Args:
@@ -403,8 +385,9 @@ class ServerModel(object):
         """
         if self.preprocessor is None:
             raise ValueError("No preprocessor loaded")
-        for function in self.preprocessor:
-            sequence = function(sequence)
+        for processor in self.preprocessor:
+            assert isinstance(processor, PreProcessor)
+            sequence = processor.process(sequence, is_split, self.model_id)
         return sequence
 
     def maybe_tokenize(self, sequence):
