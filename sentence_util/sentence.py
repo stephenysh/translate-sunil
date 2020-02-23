@@ -130,9 +130,12 @@ class Sentence(object):
         if not self.is_split:
             self.__add_split_sent(word_part)
         else:
-            sent_list = sent_tokenize(word_part)
-            for sent in sent_list:
-                self.__handle_sent_over_len(sent)
+            if len(word_part.split(" ")) <= self.MAX_WORD:
+                self.__add_split_sent(word_part)
+            else:
+                sent_list = sent_tokenize(word_part)
+                for sent in sent_list:
+                    self.__handle_sent_over_len(sent)
 
     def __handle_sent_over_len(self, sent):
         if len(sent.split(" ")) > self.MAX_WORD:
