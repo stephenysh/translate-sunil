@@ -82,7 +82,7 @@ class TranslationServer(object):
 
         return model_id
 
-    def run(self, inputs):
+    def run(self, inputs, is_split=False):
         """Translate `inputs`
 
         We keep the same format as the Lua version i.e.
@@ -117,7 +117,7 @@ class TranslationServer(object):
 
         for model_id, inputs_per_model_id in inputs_group_by_id.items():
             if model_id in self.models and self.models[model_id] is not None:
-                trans = self.models[model_id].run(inputs_per_model_id)
+                trans = self.models[model_id].run(inputs_per_model_id, is_split)
                 trans_tmp.extend(trans)
                 scores_tmp.extend([None] * len(inputs_per_model_id))
             else:
