@@ -19,6 +19,7 @@ from post_processor.abbrev_processor import AbbrevProcessor
 from post_processor.detokenization_processor import DetokenizationProcessor
 from post_processor.ner_processor import NerProcessor
 from post_processor.post_processor import PostProcessor
+from post_processor.punc_processor import PuncProcessor
 from preprocess.morfessor_processor import MorfessorProcessor
 from preprocess.moses_processor import MosesProcessor
 from preprocess.sent_obj_processor import SentObjProcessor
@@ -112,6 +113,10 @@ class ServerModel(object):
             DetokenizationProcessor(),
             NerProcessor(),
             AbbrevProcessor()
+        ]
+
+        self.postprocessor_after_merge = [
+            PuncProcessor()
         ]
 
         if load:
@@ -282,6 +287,7 @@ class ServerModel(object):
         source_lines = [line for obj in sentence_objs for line in obj.get_sentence_list()]
         final_result = [self.maybe_postprocess(target, source) for target, source in zip(results, source_lines)]
         final_result = self.__get_final_result(final_result, sentence_objs)
+        final_result = self.postprocess_after_merge(final_result)
         # build back results with empty texts
         for i in empty_indices:
             j = i * self.opt.n_best
@@ -517,4 +523,18 @@ class ServerModel(object):
         for processor in self.postprocessor:
             assert isinstance(processor, PostProcessor)
             target = processor.process(target, source, self.model_id)
+        return target
+
+    def postprocess_after_merge(self, target):
+        """
+        Postprocess result string after merge.
+        :param result:
+        :return:
+        """
+
+        if self.postprocessor_after_merge is None:
+            raise ValueError("No postprocessor loaded")
+        for processor in self.postprocessor_after_merge:
+            assert isinstance(processor, PostProcessor)
+            target = [processor.process(single_target, None, self.model_id) for single_target in target]
         return target

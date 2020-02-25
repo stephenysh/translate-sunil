@@ -1,5 +1,7 @@
+import re
 import subprocess
 from pathlib import Path
+from preprocess.moses.moses_tokenizer import MosesTokenizer
 
 current_path = Path(__file__).parent.resolve()
 
@@ -11,9 +13,9 @@ lang_convert_dict = {
     'ar2en': 'ar'
     }
 
-def do_moses(input_texts:list, lang='en2ar') -> list:
+def do_moses_use_perl(input_texts:list, lang='en2ar') -> list:
     '''
-    do moses preprocess
+    do moses preprocess use perl
     :param lang: language type, choose in 'en2ar'->'en', 'ar2en'->'ar'
     :param input_texts: list of input texts
     :return: list of processed text
@@ -29,6 +31,27 @@ def do_moses(input_texts:list, lang='en2ar') -> list:
 
     output = output.decode('utf-8').split('\n')
     output = [item for item in output if item is not '']
+
+    return output
+
+def do_moses(input_texts:list, lang='en2ar') -> list:
+    '''
+        do moses preprocess
+        :param lang: language type, choose in 'en2ar'->'en', 'ar2en'->'ar'
+        :param input_texts: list of input texts
+        :return: list of processed text
+        '''
+    assert lang in lang_convert_dict.keys()
+    lang = lang_convert_dict[lang]
+
+    tokenize = MosesTokenizer(lang)
+
+    output = []
+    for input in input_texts:
+        out = tokenize(input)
+        output.append(out)
+
+    tokenize.close()
 
     return output
 
