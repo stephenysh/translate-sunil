@@ -1,6 +1,6 @@
 import logger
 import configargparse
-from flask import Flask, jsonify, request, abort
+from flask import Flask, jsonify, request, abort, Response
 from waitress import serve
 
 from logger import init_logger
@@ -115,12 +115,15 @@ def start(config_file,
         if not is_split:
             for input in inputs:
                 if len(input['src'].split(" ")) > 60:
-                    abort(400)
+                    response = Response(response='Input length exceed', status=400)
+                    abort(response)
         else:
             if len(inputs) > 1:
-                abort(400)
+                response = Response(response='Input number exceed', status=400)
+                abort(response)
             if len(inputs[0]['src'].split(" ")) > 1000:
-                abort(400)
+                response = Response(response='Input length exceed', status=400)
+                abort(response)
 
     @app.route('/to_cpu/<model_id>', methods=['GET'])
     def to_cpu(model_id):

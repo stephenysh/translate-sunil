@@ -9,3 +9,4 @@ class WordType(Enum):
     emoji = 'emoji'
     acronymn = 'acronymn'
     mix = 'mix'
+    seperator = 'seperator'

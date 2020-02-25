@@ -28,17 +28,22 @@ class Sentence(object):
                       u"\U0001F300-\U0001F5FF"  # symbols & pictographs
                       u"\U0001F680-\U0001F6FF"  # transport & map symbols
                       u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                      u"\U00002702-\U000027B0"
+                      u"p\U00002702-\U000027B0"
                       u"\U000024C2-\U0001F251"
                       "]+", flags=re.UNICODE),
         type=WordType.emoji
+    )
+    __seperator_filter = RegularFilter(
+        re=re.compile(r"[\f\r\n]+"),
+        type=WordType.seperator
     )
     __acronymn_filter = FileFilter(file_path='conf/wikipedia-acronyms-simple.json', type=WordType.acronymn)
     __filter_list = [
         __url_filer,
         __email_filter,
         __emoji_filter,
-        __acronymn_filter
+        __acronymn_filter,
+        __seperator_filter
     ]
 
     MAX_WORD = 30
@@ -119,7 +124,7 @@ class Sentence(object):
             if len(word_part) > 0:
                 self.__handle_is_split(word_part)
 
-            sp_word_part = self.sentence[sp_word[1]:sp_word[2]].strip()
+            sp_word_part = sp_word[0]
             self.split_sentences.append(SingleSentence(sentence=sp_word_part, type=sp_word[3]))
             index = sp_word[2]
         last_part = self.sentence[index:].strip()
