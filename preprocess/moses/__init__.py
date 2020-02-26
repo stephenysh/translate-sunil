@@ -2,6 +2,8 @@ import re
 import subprocess
 from pathlib import Path
 from preprocess.moses.moses_tokenizer import MosesTokenizer
+import threading
+import concurrent.futures
 
 current_path = Path(__file__).parent.resolve()
 
@@ -34,9 +36,20 @@ def do_moses_use_perl(input_texts:list, lang='en2ar') -> list:
 
     return output
 
+def event_thread(func, stop_event):
+    result = func()
+    stop_event.set()
+    return result
+
 def do_moses(input_texts:list, lang='en2ar') -> list:
     '''
         do moses preprocess
+        use toolwrapper to get stdout and stderr
+        but one of the return maybe hangup
+        so need to use two thread with event to wait until at least one result has got returned
+        also need to get return value from thread, so use concurrent.future
+        note that because we dont want to wait for all thread finished, so should call future.shutdown(wait=False)
+
         :param lang: language type, choose in 'en2ar'->'en', 'ar2en'->'ar'
         :param input_texts: list of input texts
         :return: list of processed text
@@ -48,7 +61,31 @@ def do_moses(input_texts:list, lang='en2ar') -> list:
 
     output = []
     for input in input_texts:
-        out = tokenize(input)
+        tokenize(input)
+
+        out_stop_event = threading.Event()
+        err_stop_event = threading.Event()
+        # spawn the threads
+        executor = concurrent.futures.ThreadPoolExecutor()
+
+        future_out = executor.submit(event_thread, tokenize.read_stdout, out_stop_event)
+        future_err = executor.submit(event_thread, tokenize.read_stderr, err_stop_event)
+
+        while not out_stop_event.is_set() and not err_stop_event.is_set():
+            pass
+
+        out = ''
+        err = ''
+        if out_stop_event.is_set():
+            out = future_out.result()
+
+        if err_stop_event.is_set():
+            err = future_err.result()
+
+        executor.shutdown(wait=False)
+
+        if out == '' and err != '':
+            raise RuntimeError(err)
         output.append(out)
 
     tokenize.close()

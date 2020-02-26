@@ -12,7 +12,7 @@ class PuncProcessor(PostProcessor):
 
     p1 = re.compile(rf'\s+[{puncs_should_not_have_before_space_with_slash}]')
     p2 = re.compile(rf'[{puncs_should_not_have_after_space_with_slash}]\s+')
-    p3 = re.compile(rf'[{puncs_should_continue_with_big_letter}] [a-z]')
+    p3 = re.compile(rf'[{puncs_should_continue_with_big_letter}]\s+[a-z]')
 
     def process(self, pred, source, model_id):
         out = pred

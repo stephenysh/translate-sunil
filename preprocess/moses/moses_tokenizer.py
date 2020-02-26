@@ -1,8 +1,5 @@
-from docopt import docopt
-from openfile import openfile
 from os import path
-from toolwrapper import ToolWrapper
-import sys
+from preprocess.moses.toolwrapper import ToolWrapper
 from mosestokenizer import MosesTokenizer as MT
 
 class MosesTokenizer(ToolWrapper):
@@ -52,7 +49,7 @@ class MosesTokenizer(ToolWrapper):
         if not sentence:
             return []
         self.writeline(sentence)
-        return self.readline()
+        # return self.readline()
 
 
 if __name__ == "__main__":

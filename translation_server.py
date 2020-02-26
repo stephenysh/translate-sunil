@@ -11,7 +11,7 @@ class TranslationServer(object):
         self.models = {}
         self.next_id = 0
 
-    def start(self, config_file):
+    def start(self, config_file, debug):
         """Read the config file and pre-/load the models."""
         self.config_file = config_file
         with open(self.config_file) as f:
@@ -33,7 +33,8 @@ class TranslationServer(object):
                       'tokenizer_opt': conf.get('tokenizer', None),
                       'postprocess_opt': conf.get('postprocess', None),
                       'on_timeout': conf.get('on_timeout', None),
-                      'model_root': conf.get('model_root', self.models_root)
+                      'model_root': conf.get('model_root', self.models_root),
+                      'debug': debug
                       }
             kwargs = {k: v for (k, v) in kwargs.items() if v is not None}
             model_id = conf.get("id", None)

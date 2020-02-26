@@ -10,11 +10,9 @@ import onmt.opts
 import torch
 from onmt.translate.translator import build_translator
 from onmt.utils.alignment import to_word_align
-from onmt.utils.logging import init_logger
 from onmt.utils.misc import set_random_seed
 from onmt.utils.parse import ArgumentParser
 
-from logger import init_logger
 import logging
 from post_processor.abbrev_processor import AbbrevProcessor
 from post_processor.detokenization_processor import DetokenizationProcessor
@@ -75,7 +73,7 @@ class ServerModel(object):
 
     def __init__(self, opt, model_id, preprocess_opt=None, tokenizer_opt=None,
                  postprocess_opt=None, load=False, timeout=-1,
-                 on_timeout="to_cpu", model_root="./"):
+                 on_timeout="to_cpu", model_root="./", debug=True):
         self.model_root = model_root
         self.opt = self.parse_opt(opt)
 
@@ -90,13 +88,7 @@ class ServerModel(object):
         self.user_opt = opt
         self.tokenizer = None
 
-        if len(self.opt.log_file) > 0:
-            log_file = os.path.join(model_root, self.opt.log_file)
-        else:
-            log_file = None
-        self.logger = init_logger(__name__,
-                                  log_file=None)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger = logging.getLogger(f'{__name__}.{model_id}')
 
         self.loading_lock = threading.Event()
         self.loading_lock.set()
@@ -284,6 +276,8 @@ class ServerModel(object):
             return sum(_list, [])
 
         results = flatten_list(predictions)
+        self.logger.debug(f'text after translate: {results}')
+
         scores = [score_tensor.item()
                   for score_tensor in flatten_list(scores)]
 
@@ -397,8 +391,12 @@ class ServerModel(object):
             raise ValueError("No preprocessor loaded")
         for processor in self.preprocessor:
             assert isinstance(processor, PreProcessor)
-            sequence = processor.process(sequence, is_split, self.model_id)
-            self.logger.debug(f"preprocess {processor.__class__} result:{sequence.tokenized_list}")
+            try:
+                sequence = processor.process(sequence, is_split, self.model_id)
+            except Exception as e:
+                self.logger.error(f"{processor.__module__} ERROR: {e}")
+                raise e
+            self.logger.debug(f"{processor.__module__} result:{sequence.tokenized_list}")
         return sequence
 
     def maybe_tokenize(self, sequence):

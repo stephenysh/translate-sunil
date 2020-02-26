@@ -1,9 +1,8 @@
-import logger
+import logging
 import configargparse
 from flask import Flask, jsonify, request, abort, Response
 from waitress import serve
 
-from logger import init_logger
 from server_model import ServerModelError
 from translation_server import TranslationServer
 
@@ -21,13 +20,15 @@ def start(config_file,
         return newroute
 
     if debug:
-        logger = init_logger(__name__, None)
-
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+    logging.basicConfig(format='[%(asctime)s %(name)s %(filename)s %(funcName)s %(lineno)d %(levelname)s] %(message)s', level=log_level)
 
     app = Flask(__name__)
     app.route = prefix_route(app.route, url_root)
     translation_server = TranslationServer()
-    translation_server.start(config_file)
+    translation_server.start(config_file, debug)
 
     @app.route('/models', methods=['GET'])
     def get_models():
@@ -89,9 +90,10 @@ def start(config_file,
         is_split = __get_bool_arg(request.args.get('isSplit'))
         inputs = request.get_json(force=True)
         __is_legal_input(inputs, is_split)
-        if debug:
-            logger.info("*" * 100)
-            logger.info(inputs)
+
+        app.logger.info("*" * 100)
+        app.logger.debug(inputs)
+
         out = {}
         try:
             # trans, scores, n_best, _, aligns = translation_server.run(inputs)
@@ -107,8 +109,9 @@ def start(config_file,
         except ServerModelError as e:
             out['error'] = str(e)
             out['status'] = STATUS_ERROR
-        if debug:
-            logger.info(out)
+
+
+        app.logger.debug(out)
         return jsonify(out)
 
     def __is_legal_input(inputs, is_split):
@@ -152,7 +155,7 @@ def _get_parser():
     parser.add_argument("--port", type=int, default="5000")
     parser.add_argument("--alignment_heads", type=int, default="8")
     parser.add_argument("--url_root", type=str, default="/translator")
-    parser.add_argument("--debug", "-d", action="store_true", default=True)
+    parser.add_argument("--debug", "-d", action="store_true")
     parser.add_argument("--config", "-c", type=str,
                         default="./conf.json")
     return parser
