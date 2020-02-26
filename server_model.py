@@ -15,6 +15,7 @@ from onmt.utils.misc import set_random_seed
 from onmt.utils.parse import ArgumentParser
 
 from logger import init_logger
+import logging
 from post_processor.abbrev_processor import AbbrevProcessor
 from post_processor.detokenization_processor import DetokenizationProcessor
 from post_processor.ner_processor import NerProcessor
@@ -95,6 +96,7 @@ class ServerModel(object):
             log_file = None
         self.logger = init_logger(__name__,
                                   log_file=None)
+        self.logger.setLevel(logging.DEBUG)
 
         self.loading_lock = threading.Event()
         self.loading_lock.set()
@@ -254,6 +256,7 @@ class ServerModel(object):
 
         empty_indices = [i for i, x in enumerate(texts) if x == ""]
         texts_to_translate = [x for x in texts if x != ""]
+        self.logger.debug(f'text after preprocess: {texts_to_translate}')
 
         scores = []
         predictions = []
@@ -286,6 +289,7 @@ class ServerModel(object):
 
         source_lines = [line for obj in sentence_objs for line in obj.get_sentence_list()]
         final_result = [self.maybe_postprocess(target, source) for target, source in zip(results, source_lines)]
+        self.logger.debug(f'text after postprocess: {final_result}')
         final_result = self.__get_final_result(final_result, sentence_objs)
         final_result = self.postprocess_after_merge(final_result)
         # build back results with empty texts
@@ -394,6 +398,7 @@ class ServerModel(object):
         for processor in self.preprocessor:
             assert isinstance(processor, PreProcessor)
             sequence = processor.process(sequence, is_split, self.model_id)
+            self.logger.debug(f"preprocess {processor.__class__} result:{sequence.tokenized_list}")
         return sequence
 
     def maybe_tokenize(self, sequence):

@@ -152,7 +152,7 @@ def _get_parser():
     parser.add_argument("--port", type=int, default="5000")
     parser.add_argument("--alignment_heads", type=int, default="8")
     parser.add_argument("--url_root", type=str, default="/translator")
-    parser.add_argument("--debug", "-d", action="store_true")
+    parser.add_argument("--debug", "-d", action="store_true", default=True)
     parser.add_argument("--config", "-c", type=str,
                         default="./conf.json")
     return parser
